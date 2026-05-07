@@ -193,13 +193,16 @@ induction head cannot solve this above chance.
 
 **Outcome: inconclusive.** Our dense baseline plateaus at ~30% accuracy
 on n_pairs=4 MQAR (chance among 4 in-context candidate values is 25%)
-across configs up to 2.68M params, 8000 steps, both MPS and CPU. The
-Mamba paper's published dense MQAR baseline reaches 100% on this task,
-so something in our setup (init, residual scaling, hparams, or a subtle
-bug) is preventing induction heads from forming. Until dense solves it,
-ARIA's number is uninformative.
+across configs up to 2.68M params, 8000 steps, both MPS and CPU.
 
-Real follow-up: replicate the published Mamba MQAR config verbatim
+**Cross-check with nanoGPT verbatim (`eval/_nanogpt_ref.py`):** we ran
+Karpathy's exact `model.py` on the same task — it plateaus at the same
+~30%. So our `model_dense.py` is not buggy; it matches nanoGPT 1:1 in
+behavior on this task. The gap is in our task formulation or hparam
+choices relative to the published Zoology MQAR sweep that reaches 100%.
+
+Real follow-up: replicate the published Zoology MQAR config verbatim
+(arch + init + LR schedule + sequence-length curriculum + batch + steps)
 to get a working dense baseline, *then* plug ARIA in.
 
 ## Roadmap
