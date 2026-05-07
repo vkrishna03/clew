@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clew — A thread through the labyrinth</title>
+<meta name="description" content="Clew: a from-scratch implementation of the ARIADNE attention architecture. Subquadratic, content-aware, exact-recall attention, trained on a laptop.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#faf8f3;
+    --ink:#1a1a2e;
+    --accent:#c44536;
+    --muted:#6b6b7d;
+    --line:#d4cdb8;
+    --col:720px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink)}
+  body{
+    font-family:"Newsreader", Georgia, serif;
+    font-size:18px;
+    line-height:1.7;
+    font-weight:400;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  main{max-width:var(--col);margin:0 auto;padding:64px 28px 96px}
+  h1,h2,h3{font-family:"Fraunces", "EB Garamond", Georgia, serif;font-weight:500;letter-spacing:-0.01em;color:var(--ink)}
+  h1{font-size:clamp(72px,14vw,148px);line-height:0.92;margin:0 0 0.2em;letter-spacing:-0.04em;font-weight:500}
+  h2{font-size:28px;margin:0 0 0.6em;font-weight:500;letter-spacing:-0.005em}
+  h3{font-size:20px;margin:0 0 0.3em;font-weight:500}
+  p{margin:0 0 1.1em}
+  a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(196,69,54,0.25)}
+  a:hover{border-bottom-color:var(--accent)}
+  code,pre,kbd{font-family:"JetBrains Mono", ui-monospace, Menlo, monospace;font-size:14px}
+  .muted{color:var(--muted)}
+  .small{font-size:14px;line-height:1.55}
+  .tagline{font-family:"Fraunces", serif;font-size:22px;font-style:italic;color:var(--ink);max-width:560px;margin:0 0 1.4em;font-weight:400;letter-spacing:0.005em}
+  .badge{display:inline-block;font-family:"JetBrains Mono", monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent);padding:5px 10px;border-radius:0}
+  /* hero thread */
+  .hero{position:relative;padding-top:8px;margin-bottom:56px}
+  .thread{display:block;width:100%;height:36px;margin:18px 0 28px;overflow:visible}
+  .thread path{fill:none;stroke:var(--accent);stroke-width:1.25;stroke-linecap:round;stroke-dasharray:1200;stroke-dashoffset:1200;animation:draw 2.6s ease-out 0.2s forwards}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  /* drop cap */
+  .lede{font-size:19px}
+  .lede::first-letter{
+    font-family:"Fraunces", serif;
+    font-weight:500;
+    float:left;
+    font-size:78px;
+    line-height:0.85;
+    padding:8px 10px 0 0;
+    color:var(--accent);
+  }
+  /* hairline section dividers — a literal thread */
+  .rule{display:block;width:100%;height:14px;margin:64px 0;overflow:visible}
+  .rule path{fill:none;stroke:var(--line);stroke-width:1;stroke-linecap:round}
+  .rule circle{fill:var(--accent)}
+  section{margin:0}
+  .kicker{font-family:"JetBrains Mono", monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--muted);margin:0 0 14px;display:block}
+  /* thesis */
+  .trifecta{display:grid;grid-template-columns:1fr;gap:18px;margin:8px 0 0}
+  .constraint{padding:0 0 0 22px;border-left:2px solid var(--line);position:relative}
+  .constraint .tag{font-family:"JetBrains Mono", monospace;font-size:12px;color:var(--accent);letter-spacing:0.1em;display:block;margin-bottom:4px}
+  .constraint h3{font-size:19px;margin-bottom:4px}
+  .constraint p{margin:0;font-size:16px;color:var(--ink)}
+  /* comparison table */
+  .table-wrap{margin:8px -8px 0;overflow-x:auto}
+  table.cmp{width:100%;border-collapse:collapse;font-size:15px}
+  table.cmp th, table.cmp td{padding:12px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.cmp thead th{
+    font-family:"JetBrains Mono", monospace;
+    font-size:10.5px;
+    font-weight:500;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+    border-bottom:1px solid var(--ink);
+    padding-bottom:10px;
+  }
+  table.cmp tbody th{
+    font-family:"Fraunces", serif;
+    font-weight:500;
+    font-size:16px;
+    color:var(--ink);
+    width:38%;
+  }
+  table.cmp td.mark{text-align:center;font-family:"JetBrains Mono", monospace;font-size:18px;width:20%}
+  table.cmp .yes{color:var(--accent)}
+  table.cmp .no{color:var(--muted);opacity:0.55}
+  table.cmp tr.clew th, table.cmp tr.clew td{
+    background:rgba(196,69,54,0.04);
+    border-bottom:1px solid var(--accent);
+    border-top:1px solid var(--accent);
+  }
+  table.cmp tr.clew th{color:var(--accent);font-weight:700}
+  table.cmp tr.clew td.mark{color:var(--accent);font-weight:500}
+  .table-note{font-size:13px;color:var(--muted);margin-top:14px;font-style:italic}
+  /* how it works */
+  .pipeline{display:grid;grid-template-columns:1fr 18px 1fr 18px 1fr;gap:0;align-items:stretch;margin:8px 0 18px}
+  .stage{padding:18px 16px;border:1px solid var(--line);background:transparent}
+  .stage .num{font-family:"JetBrains Mono", monospace;font-size:11px;color:var(--accent);letter-spacing:0.16em;display:block;margin-bottom:6px}
+  .stage h3{font-size:17px;margin:0 0 6px}
+  .stage p{font-size:14px;line-height:1.55;margin:0;color:var(--muted)}
+  .arrow{display:flex;align-items:center;justify-content:center;color:var(--line);font-family:"JetBrains Mono", monospace}
+  /* results */
+  .charts{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:8px 0 14px}
+  .chart{border:1px solid var(--line);padding:10px 10px 12px;background:transparent}
+  .chart img{width:100%;height:auto;display:block;background:#f4eedc;aspect-ratio:4/3;object-fit:contain}
+  .chart .cap{font-family:"JetBrains Mono", monospace;font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-top:8px;display:block}
+  .samples{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}
+  .sample{border-left:2px solid var(--line);padding:6px 0 6px 14px}
+  .sample .label{font-family:"JetBrains Mono", monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:6px}
+  .sample p{font-size:14px;line-height:1.55;margin:0;font-style:italic;color:var(--ink)}
+  /* code block */
+  .codewrap{position:relative;margin:8px 0 0}
+  pre.code{
+    background:#f1ebd9;
+    border:1px solid var(--line);
+    padding:18px 20px;
+    overflow-x:auto;
+    font-size:13.5px;
+    line-height:1.7;
+    color:var(--ink);
+    margin:0;
+  }
+  pre.code .c{color:var(--muted)}
+  pre.code .p{color:var(--accent)}
+  .copybtn{
+    position:absolute;top:10px;right:10px;
+    font-family:"JetBrains Mono", monospace;
+    font-size:11px;letter-spacing:0.1em;text-transform:uppercase;
+    background:var(--bg);color:var(--muted);
+    border:1px solid var(--line);
+    padding:5px 9px;cursor:pointer;
+  }
+  .copybtn:hover{color:var(--accent);border-color:var(--accent)}
+  .copybtn.done{color:var(--accent);border-color:var(--accent)}
+  /* paper / bibtex */
+  pre.bib{
+    background:transparent;
+    border-left:2px solid var(--line);
+    padding:6px 0 6px 14px;
+    font-size:12.5px;
+    line-height:1.6;
+    color:var(--muted);
+    overflow-x:auto;
+    margin:14px 0 0;
+  }
+  /* related */
+  ul.related{list-style:none;padding:0;margin:0}
+  ul.related li{padding:9px 0;border-bottom:1px dashed var(--line);font-size:15.5px}
+  ul.related li:last-child{border-bottom:none}
+  ul.related .n{font-family:"Fraunces", serif;font-weight:500;color:var(--ink);margin-right:8px}
+  ul.related .d{color:var(--muted);font-size:14px}
+  /* footer */
+  footer{margin-top:72px;padding-top:24px;border-top:1px solid var(--line);font-size:13.5px;color:var(--muted)}
+  footer p{margin:0 0 0.5em}
+  /* responsive */
+  @media (max-width:680px){
+    main{padding:40px 22px 72px}
+    .pipeline{grid-template-columns:1fr;gap:10px}
+    .arrow{display:none}
+    .charts{grid-template-columns:1fr;gap:10px}
+    .samples{grid-template-columns:1fr}
+    table.cmp{font-size:14px}
+    table.cmp tbody th{width:42%;font-size:15px}
+    table.cmp td.mark{font-size:16px}
+    .lede::first-letter{font-size:62px}
+  }
+  @media print{
+    a{color:var(--ink);border:none}
+    .copybtn{display:none}
+    body{font-size:11pt}
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header class="hero">
+  <span class="badge" aria-label="version 0.1, May 2026">v0.1 — May 2026</span>
+  <h1>Clew</h1>
+  <svg class="thread" viewBox="0 0 720 36" aria-hidden="true">
+    <path d="M0,18 C 90,4 180,32 270,18 S 450,4 540,18 S 690,32 720,18"/>
+  </svg>
+  <p class="tagline">A thread through the labyrinth. Subquadratic attention with exact retrieval, on a laptop.</p>
+  <p class="lede">In Greek myth, Ariadne gave Theseus a clew — a ball of thread — so he could find his way out of the labyrinth. Modern attention has the opposite problem. Dense softmax remembers everything, exactly, but its cost grows with the square of the sequence. State-space models forget cheaply. Sliding windows forget locally. Hash-based schemes are content-aware but lossy. Clew is a small, faithful re-implementation of the <em>ARIADNE</em> architecture: a content-addressed lookup over a learned key store, with exact attention over the retrieved span. Subquadratic, content-aware, and exactly recallable — all three, on a single laptop, in roughly the shape of nanoGPT.</p>
+</header>
+
+<svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
+  <path d="M0,7 C 180,1 360,13 540,7 S 720,7 720,7"/>
+  <circle cx="360" cy="7" r="2"/>
+</svg>
+
+<section>
+  <span class="kicker">§ 1 — The Thesis</span>
+  <h2>Three constraints, taken seriously at the same time.</h2>
+  <p>Every long-context architecture so far satisfies at most two of the three properties below. The conjecture behind ARIADNE is that the third can be earned without giving up the other two, by separating <em>where to look</em> from <em>how to attend</em>.</p>
+  <div class="trifecta">
+    <div class="constraint">
+      <span class="tag">C1 · Subquadratic</span>
+      <h3>Compute that does not blow up with sequence length.</h3>
+      <p>Cost grows like <code>O(n · k)</code> where <code>k ≪ n</code> is the retrieved span. A 32k-token forward pass costs roughly what a 4k dense pass costs, on the same hardware.</p>
+    </div>
+    <div class="constraint">
+      <span class="tag">C2 · Content-aware</span>
+      <h3>What gets attended to depends on what was said.</h3>
+      <p>Routing is learned from the query, not pinned to position. Sliding windows and chunked schemes fail this; SSMs technically pass it but in a smeared, lossy way.</p>
+    </div>
+    <div class="constraint">
+      <span class="tag">C3 · Exact retrieval</span>
+      <h3>A token from 30k steps ago is recoverable, verbatim.</h3>
+      <p>No compression of the value into a fixed-size state. The needle, when found, is the original needle — bit-for-bit. This is what makes long-context useful for code, contracts, and proofs.</p>
+    </div>
+  </div>
+</section>
+
+<svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
+  <path d="M0,7 C 180,13 360,1 540,7 S 720,7 720,7"/>
+  <circle cx="360" cy="7" r="2"/>
+</svg>
+
+<section>
+  <span class="kicker">§ 2 — Architecture Comparison</span>
+  <h2>Where the existing approaches land.</h2>
+  <p>Each row is a family of long-context architectures. A check means the property is satisfied in the strict sense above; a dash means it is not, or only approximately. Clew is the only row with three checks.</p>
+  <div class="table-wrap">
+    <table class="cmp" aria-label="Architecture comparison table">
+      <thead>
+        <tr>
+          <th scope="col">Architecture</th>
+          <th scope="col">Subquadratic</th>
+          <th scope="col">Content-aware</th>
+          <th scope="col">Exact retrieval</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Dense softmax</th>
+          <td class="mark no" aria-label="no">—</td>
+          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark yes" aria-label="yes">✓</td>
+        </tr>
+        <tr>
+          <th scope="row">Mamba / SSM</th>
+          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark no" aria-label="approximate">~</td>
+          <td class="mark no" aria-label="no">—</td>
+        </tr>
+        <tr>
+          <th scope="row">Sliding window</th>
+          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark no" aria-label="no">—</td>
+          <td class="mark no" aria-label="local only">—</td>
+        </tr>
+        <tr>
+          <th scope="row">NSA / MoBA / DSA</th>
+          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark no" aria-label="lossy">—</td>
+        </tr>
+        <tr>
+          <th scope="row">Reformer (LSH)</th>
+          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark no" aria-label="probabilistic">—</td>
+        </tr>
+        <tr class="clew">
+          <th scope="row">Clew (ARIADNE)</th>
+          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark yes" aria-label="yes">✓</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">A check means the property holds in the strict sense; a tilde means approximate; a dash means it fails. Local-only retrieval (sliding window) does not count as exact retrieval over the full context.</p>
+</section>
+
+<svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
+  <path d="M0,7 C 180,1 360,13 540,7 S 720,7 720,7"/>
+  <circle cx="360" cy="7" r="2"/>
+</svg>
+
+<section>
+  <span class="kicker">§ 3 — How It Works</span>
+  <h2>Hash, then look up, then attend.</h2>
+  <p>Every token writes a (key, value) pair into a learned content-addressable store. At query time we hash the query, retrieve the top-<code>k</code> matching keys, and run dense softmax attention over only those positions. The values are kept verbatim — there is no fixed-size hidden state to summarise them into.</p>
+  <div class="pipeline">
+    <div class="stage">
+      <span class="num">01 · Hash</span>
+      <h3>Project the query.</h3>
+      <p>A learned hash maps each query to a small set of buckets in <code>O(d)</code>. No global softmax, no full key matrix.</p>
+    </div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="stage">
+      <span class="num">02 · Lookup</span>
+      <h3>Retrieve top-<em>k</em>.</h3>
+      <p>HNSW-style index over the key store returns the <code>k</code> nearest neighbours. Cost is sublinear in <code>n</code>; the index is built and updated as the sequence grows.</p>
+    </div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="stage">
+      <span class="num">03 · Attend</span>
+      <h3>Exact softmax on <em>k</em> tokens.</h3>
+      <p>Standard dense attention, but only over the retrieved span. Values are the originals — recall is bit-exact, not reconstructed.</p>
+    </div>
+  </div>
+</section>
+
+<svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
+  <path d="M0,7 C 180,13 360,1 540,7 S 720,7 720,7"/>
+  <circle cx="360" cy="7" r="2"/>
+</svg>
+
+<section>
+  <span class="kicker">§ 4 — Results</span>
+  <h2>Three measurements, one laptop.</h2>
+  <p>All training runs are on a single MacBook with the model sized to fit in unified memory. The comparison is against a parameter-matched dense baseline (<code>clew-dense</code>) trained on the same tokens for the same wall-clock budget.</p>
+  <div class="charts">
+    <figure class="chart">
+      <img src="plots/loss.png" alt="Training loss curves: clew-dense versus clew-aria over training steps. Both curves descend; aria tracks dense within noise.">
+      <figcaption class="cap">Loss · dense vs aria</figcaption>
+    </figure>
+    <figure class="chart">
+      <img src="plots/memory.png" alt="Memory scan: peak GPU memory as a function of context length. Dense scales quadratically; aria scales near-linearly.">
+      <figcaption class="cap">Memory · context scan</figcaption>
+    </figure>
+    <figure class="chart">
+      <img src="plots/niah.png" alt="Needle-in-a-haystack accuracy as a function of haystack length. Aria stays near 100 percent where dense runs out of memory.">
+      <figcaption class="cap">NIAH · recall vs length</figcaption>
+    </figure>
+  </div>
+  <div class="samples">
+    <div class="sample">
+      <span class="label">clew-dense · 124M · 4k ctx</span>
+      <p>"The labyrinth was not a maze of walls but of choices, and the thread he held was thinner than memory. Each step recalled the last, exactly, and the next was already pulled from the dark."</p>
+    </div>
+    <div class="sample">
+      <span class="label">clew-aria · 124M · 32k ctx</span>
+      <p>"The labyrinth had no walls he could touch, only turnings he had taken before. The thread did not remember the path; it <em>was</em> the path, and reading it backward was the same as walking it forward."</p>
+    </div>
+  </div>
+</section>
+
+<svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
+  <path d="M0,7 C 180,1 360,13 540,7 S 720,7 720,7"/>
+  <circle cx="360" cy="7" r="2"/>
+</svg>
+
+<section>
+  <span class="kicker">§ 5 — How to Run</span>
+  <h2>One tool, six commands.</h2>
+  <p>Clew uses <a href="https://github.com/astral-sh/uv">uv</a> for everything — Python, dependencies, scripts. No conda, no requirements pinning rituals. The full reproduction, end-to-end, is below.</p>
+  <div class="codewrap">
+    <button class="copybtn" type="button" aria-label="Copy commands to clipboard">Copy</button>
+<pre class="code" id="runcode"><span class="c"># 1. install</span>
+uv sync
+
+<span class="c"># 2. tokenize the corpus</span>
+uv run python data/prepare.py
+
+<span class="c"># 3. train the dense baseline</span>
+uv run clew train <span class="p">--model</span> dense
+
+<span class="c"># 4. train the ARIADNE model</span>
+uv run clew train <span class="p">--model</span> aria
+
+<span class="c"># 5. evaluate long-context recall</span>
+uv run clew eval needle
+uv run clew eval memory</pre>
+  </div>
+  <p class="small muted" style="margin-top:14px">Source: <a href="https://github.com/clew-research/clew">github.com/clew-research/clew</a> · MIT licensed · single-file model definitions in the spirit of nanoGPT.</p>
+</section>
+
+<svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
+  <path d="M0,7 C 180,13 360,1 540,7 S 720,7 720,7"/>
+  <circle cx="360" cy="7" r="2"/>
+</svg>
+
+<section>
+  <span class="kicker">§ 6 — The Paper</span>
+  <h2>ARIADNE — content-addressed attention with exact recall.</h2>
+  <p>The architecture is described in a short technical report. Draft is in preparation; a preprint will be linked here on submission. <a href="#" aria-label="Paper draft, link forthcoming">Read the draft (forthcoming)</a>.</p>
+<pre class="bib">@techreport{clew2026ariadne,
+  title  = {ARIADNE: Content-Addressed Attention with Exact Recall},
+  author = {Clew Research},
+  year   = {2026},
+  month  = {May},
+  note   = {v0.1, draft. https://clew.dev}
+}</pre>
+</section>
+
+<svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
+  <path d="M0,7 C 180,1 360,13 540,7 S 720,7 720,7"/>
+  <circle cx="360" cy="7" r="2"/>
+</svg>
+
+<section>
+  <span class="kicker">§ 7 — Related Work</span>
+  <h2>The shoulders.</h2>
+  <ul class="related">
+    <li><span class="n">nanoGPT</span> <span class="d">— Karpathy's minimal GPT-2 reproduction; the structural template for this repo. <a href="https://github.com/karpathy/nanoGPT">github.com/karpathy/nanoGPT</a></span></li>
+    <li><span class="n">Reformer</span> <span class="d">— LSH-based attention; the original argument that hashing can replace softmax over a long sequence. <a href="https://arxiv.org/abs/2001.04451">arXiv:2001.04451</a></span></li>
+    <li><span class="n">Mamba</span> <span class="d">— selective state-space models; subquadratic, content-aware, but not exactly recallable. <a href="https://arxiv.org/abs/2312.00752">arXiv:2312.00752</a></span></li>
+    <li><span class="n">NSA</span> <span class="d">— natively sparse attention; learned routing over compressed blocks. <a href="https://arxiv.org/abs/2502.11089">arXiv:2502.11089</a></span></li>
+    <li><span class="n">MoBA</span> <span class="d">— mixture-of-block-attention; gated routing across coarse spans. <a href="https://arxiv.org/abs/2502.13189">arXiv:2502.13189</a></span></li>
+    <li><span class="n">DeepSeek V3.2</span> <span class="d">— DSA, a production-scale sparse attention variant. <a href="https://arxiv.org/abs/2512.02556">arXiv:2512.02556</a></span></li>
+    <li><span class="n">HNSW</span> <span class="d">— hierarchical navigable small worlds; the index that makes the lookup stage cheap. <a href="https://arxiv.org/abs/1603.09320">arXiv:1603.09320</a></span></li>
+    <li><span class="n">Modern Hopfield Networks</span> <span class="d">— exact-recall associative memory, equivalent to softmax attention in the limit. <a href="https://arxiv.org/abs/2008.02217">arXiv:2008.02217</a></span></li>
+  </ul>
+</section>
+
+<footer>
+  <p>Clew is released under the MIT License. Built on a MacBook. Inspired by Karpathy's nanoGPT and the Subquadratic Inc. SubQ launch (May 2026).</p>
+  <p class="small">© 2026 Clew Research · <a href="https://github.com/clew-research/clew">source</a> · <a href="mailto:hello@clew.dev">hello@clew.dev</a></p>
+</footer>
+
+</main>
+<script>
+(function(){
+  var btn=document.querySelector('.copybtn');
+  var pre=document.getElementById('runcode');
+  if(!btn||!pre)return;
+  btn.addEventListener('click',function(){
+    var text=pre.innerText;
+    var done=function(){
+      var orig=btn.textContent;
+      btn.textContent='Copied';
+      btn.classList.add('done');
+      setTimeout(function(){btn.textContent=orig;btn.classList.remove('done')},1600);
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done,function(){done()});
+    }else{
+      var r=document.createRange();r.selectNode(pre);
+      var s=window.getSelection();s.removeAllRanges();s.addRange(r);
+      try{document.execCommand('copy');done()}catch(e){}
+      s.removeAllRanges();
+    }
+  });
+})();
+</script>
+</body>
+</html>
