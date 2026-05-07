@@ -69,22 +69,49 @@ right; longer training would likely close it.
 The crossover lands between T=4096 and T=8192. At T=8192, ARIA is **3.8× faster
 and uses 4.4 GB less memory** than dense. This is the v0 demo.
 
-### Needle-in-haystack (hash-bucket retrieval @ k=64, in-distribution context)
+### Needle-in-haystack (hash-bucket retrieval @ k=64, 4 heads, in-distribution context)
 
-| T | retrieval-acc | random baseline |
-|---:|---:|---:|
-| 256 (trained) | **95%** | ~87% |
-| 512 | 60% | ~63% |
-| 1024 | 35% | ~40% |
-| 2048 | 10% | ~22% |
-| 4096 | 5% | ~12% |
+| T | what we measured | random-hash baseline | delta |
+|---:|---:|---:|---:|
+| 256 (trained) | 95% | **99.97%** | −5pp |
+| 512  | 60% | 98% | −38pp |
+| 1024 | 35% | 87% | −52pp |
+| 2048 | 10% | 63% | −53pp |
+| 4096 | 5%  | 39% | −34pp |
 
-Within the trained context length the learned hash retrieves real signal
-(95% vs 87% random). Past the trained context the hash degrades to *below*
-random — the training distribution didn't teach it to behave at longer T.
-Honest negative result for the v0 long-context claim; expected fix is to
-train at longer T (or train phi explicitly on long sequences via stretched
-position embeddings or RoPE).
+**This is a clean negative result for C3 (exact retrieval) at v0 scale.**
+
+Baseline math: if 4 heads each draw 64 candidates uniformly from T positions,
+`P(any head hits the 8-byte needle) = 1 − (1 − 8/T)^256`. Our learned hash is
+worse than that at every length we tested, including the trained one.
+
+Why: the aux router loss pushes content-similar keys into the same bucket,
+which concentrates buckets and makes candidate sets dominated by
+similar-to-query tokens. That's good for content-addressable lookup but
+*counterproductive* for retrieving arbitrary planted facts. Past T=256 the
+position embedding wraps (`pos % block_size`) which further breaks hash
+behavior at lengths the model never saw.
+
+What this means for the trifecta:
+
+- **C1 subquadratic:** ✅ memory crossover at T=8192 is real.
+- **C2 content-aware:** ✅ by construction.
+- **C3 exact retrieval:** ❌ — the mechanism (gather → exact-attend over a
+  candidate set) runs and gradients flow, but the learned function in this
+  regime doesn't retrieve usefully. The PRD §3.1 stretch goals
+  (S2 ≥90% @ 16k, S3 ≥80% @ 64k) are nowhere close.
+
+What v0.5+ would need to actually validate C3:
+
+- Train at long T (≥4k) so the hash sees long-range structure during training.
+- Replace wrap-around position embedding with RoPE/ALiBi/NoPE so hash inputs
+  are length-invariant.
+- More params (10M+) for capacity to learn a *retrieval-useful* hash rather
+  than a *similar-content* hash — these are different objectives and the v0
+  aux loss conflates them.
+- A downstream task that *requires* retrieval (e.g. associative-recall à la
+  Mamba's selective copy) so the hash gets gradient pressure from a real
+  retrieval objective, not a teacher-distillation proxy.
 
 ### Sample generations
 
@@ -131,9 +158,12 @@ in T, and we measured the crossover. The throughput plot is also real,
 *but* depends on dense's MPS implementation choking on T² scratch at
 T=8192. That's the demo, not a kernel-vs-kernel claim.
 
-The NIAH plot is the honest negative: a 1M-param model trained at T=256
-has not learned a hash that generalizes to longer T. Fixing this needs
-training at long T, more params, or both — i.e. v0.5+.
+The NIAH plot is the honest negative: the learned hash is **worse than a
+random hash at every length tested**, including the trained one (95% vs
+99.97% for 4 heads at T=256). Bucket concentration from the aux router loss
+hurts retrieval of arbitrary planted facts. C3 is the trifecta property
+that v0 did not validate. Fixing it needs training at long T, length-invariant
+position encoding, more params, and a real retrieval objective — i.e. v0.5+.
 
 ## Reproducing on your own M3
 
