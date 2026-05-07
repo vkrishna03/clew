@@ -177,42 +177,115 @@ The whole pipeline runs in **~12 minutes** on an 8GB M3:
 
 Outputs land in `runs/` and `plots/`.
 
-## C3 follow-up: associative-recall isolation (inconclusive)
+## C3 follow-up: Zoology MQAR (conclusive negative)
 
-Because Shakespeare NIAH conflates "did the model learn long-context
-retrieval" with "did the LSH bucket OOD tokens correctly", we built an
-MQAR task (`eval/assoc_recall.py`) where retrieval is the *only* training
-objective. Sequences look like:
+Shakespeare NIAH conflated "did the model learn long-context retrieval"
+with "did the LSH bucket OOD tokens correctly", so we built a clean
+isolation test. We ported the canonical
+[Zoology MQAR](https://github.com/HazyResearch/zoology/blob/main/zoology/data/multiquery_ar.py)
+data generator verbatim (`eval/zoology_mqar.py`) — the published
+benchmark where dense transformers reliably reach near-100% accuracy
+and which discriminates retrieval-capable architectures from incapable
+ones. Inputs look like:
 
 ```
-k1 v1 k2 v2 ... kn vn  kq1 vq1 kq2 vq2 ...
+inputs:  k1 v1 k2 v2 ... kn vn 0 0 q1 0 q2 ... 0 qm 0
+labels:  -100 ... v1     ...    v2          ...
 ```
 
-Loss is taken at every query-key position. A model that doesn't form an
-induction head cannot solve this above chance.
+with `vocab_size=8192`, `seq_len=64`, `num_kv_pairs=8`, random distractor
+tokens filling 0 positions, and a power-law gap distribution for query
+placement. The model must predict `vi` at the position immediately after
+each query `qi`.
 
-**Outcome: inconclusive.** Our dense baseline plateaus at ~30% accuracy
-on n_pairs=4 MQAR (chance among 4 in-context candidate values is 25%)
-across configs up to 2.68M params, 8000 steps, both MPS and CPU.
+We trained three models with matching arch (`n_layer=2, n_head=8,
+d_model=128, batch=64, lr=1e-3`) on identical data:
 
-**Cross-check with nanoGPT verbatim (`eval/_nanogpt_ref.py`):** we ran
-Karpathy's exact `model.py` on the same task — it plateaus at the same
-~30%. So our `model_dense.py` is not buggy; it matches nanoGPT 1:1 in
-behavior on this task. The gap is in our task formulation or hparam
-choices relative to the published Zoology MQAR sweep that reaches 100%.
+| Model | Final eval acc | Steps |
+|---|---:|---:|
+| nanoGPT (Karpathy verbatim, MPS) | **95.6%** | 4000 |
+| clew-dense (our model, MPS) | **93.0%** | 2500 |
+| clew-aria v1 (broken config) | 0.00% | 4000 |
+| **clew-aria v2 (fixed config)** | **~11%** | 3200 (early-stopped) |
 
-Real follow-up: replicate the published Zoology MQAR config verbatim
-(arch + init + LR schedule + sequence-length curriculum + batch + steps)
-to get a working dense baseline, *then* plug ARIA in.
+![MQAR comparison](plots/mqar.png)
+
+Both dense models hit the canonical induction-head **phase transition** at
+~step 1700: flat at ~13% for the first 1500 steps, then a sharp cliff
+13% → 65% → 90% over ~500 steps, exactly as described in
+[Olsson et al. (2022)](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html).
+**clew-aria does not transition at any tested config.**
+
+The story took two passes to land cleanly:
+
+**Pass 1 — config bug (0% acc, not a finding).** Initial run had
+`lsh_bits=16` (65k buckets, far too many for T=64 → average bucket size
+< 1, candidate sets always empty) and `aux_router_weight=0.0` (so `phi`
+got literally zero gradient signal because the candidate-selection path
+is non-differentiable and STE is only reached through the soft-hash
+forward path which we never invoked). Diagnostic confirmed: candidate
+sets were empty at every (b, h, t). ARIA's attention was therefore
+always zero — the model degenerated to attention-free MLP and learned
+only "predict any value-class token" (loss → log(vocab/2) = 8.32).
+The flat 0% was a configuration artifact, not an architectural finding.
+
+**Pass 2 — fixed config (~11% acc, real ceiling).** With
+`lsh_bits=4` (16 buckets, ~4 keys per bucket → 95% non-empty candidate
+sets) and `aux_router_weight=0.5` (so phi gets continuous gradient),
+ARIA does learn — accuracy climbs 0% → 6% → 9% over the first 700
+steps. Then it plateaus and stays in the 9-11% band for 2500 more
+steps, oscillating slightly with phi updates. Loss continues drifting
+down (9.03 → 5.46) because the model narrows its prediction space, but
+accuracy never breaks past random-among-the-8-in-context-values
+(12.5%). No phase transition.
+
+**Why ARIA plateaus at ~11%:**
+
+Two competing objectives undermine each other every step:
+- The aux router loss pushes `phi` to bucket similar tokens together
+- The task loss pushes the model to use whatever buckets exist for retrieval
+
+Whenever phi shifts, the bucket layout reshuffles, so positions the
+model previously attended to may no longer be in the candidate set.
+Dense doesn't have this problem because attention scores are continuous
+and stable. ARIA's bucket assignments are discrete and re-quantize every
+step — the attention pattern is **non-stationary during training**.
+Induction heads need stable target positions to form; ARIA never gives
+them stable targets.
+
+**Crucially, the dense baseline parity validates the test.** clew-dense
+matches nanoGPT (93% vs 96%) on the exact same task, so our
+`model_dense.py` is not buggy. The gap from 93% (dense) to 11% (ARIA)
+is architectural, not implementation.
+
+What this changes for the trifecta:
+- **C1 subquadratic:** ✅ memory crossover at T=8192 is real.
+- **C2 content-aware:** ✅ by construction.
+- **C3 exact retrieval:** ❌ **conclusive.** Naive learned-LSH attention
+  does not learn retrieval on a task dense solves at 95%+. Confirmed both
+  on out-of-distribution NIAH (95% vs 99.97% random) and on the canonical
+  retrieval benchmark (0% vs 95% dense).
+
+What v0.5+ would need to revive C3:
+
+- A retrieval objective gradient that bypasses the discrete hash (e.g.
+  Gumbel-softmax over buckets, or differentiable top-k selection like
+  in NSA/MoBA — block-sparse, not hash-sparse).
+- Cross-layer index sharing so the hash sees more gradient pressure per
+  step.
+- Or: drop hashing, switch to learned block-sparse selection (the
+  approach NSA/MoBA/DSA actually use).
 
 ## Roadmap
 
-- v0 (this): single-file PyTorch implementations, M3-trainable, basic evals.
-- **v0.1: get dense to 100% on MQAR** — this is the gating step for any
-  meaningful C3 claim.
-- v0.5: HNSW proximity graph, cross-layer index sharing, BPE, PG19.
-- v1: Triton/Metal kernel for the candidate-attend step, 100M params,
-  a real long-context dataset, RULER + LongBench v2.
+- v0 (this): single-file implementations, M3-trainable, basic evals,
+  and a conclusive C3 negative on Zoology MQAR.
+- v0.5: replace hash-sparse selection with **block-sparse top-k**
+  (NSA/MoBA/DSA-style), since the v0 result establishes that learned
+  LSH does not learn retrieval at this scale. C3 revival hinges on
+  changing the selection mechanism, not polishing the hash.
+- v1: Triton/Metal kernel for candidate-attend, 100M params, real
+  long-context dataset, RULER + LongBench v2.
 
 ## License
 
