@@ -11,7 +11,8 @@ def run():
     files = [
         ("nanogpt", "runs/zoology_mqar_nanogpt.json", "#1a1a2e", "-"),
         ("clew-dense", "runs/zoology_mqar_dense.json", "#6b6b7d", "-"),
-        ("clew-aria", "runs/zoology_mqar_aria.json", "#c44536", "-"),
+        ("clew-aria v1 (config bug)", "runs/zoology_mqar_aria_v1_broken.json", "#c44536", ":"),
+        ("clew-aria v2 (fixed)", "runs/zoology_mqar_aria.json", "#c44536", "-"),
     ]
     for name, path, color, ls in files:
         p = Path(path)
