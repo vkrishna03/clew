@@ -177,9 +177,36 @@ The whole pipeline runs in **~12 minutes** on an 8GB M3:
 
 Outputs land in `runs/` and `plots/`.
 
+## C3 follow-up: associative-recall isolation (inconclusive)
+
+Because Shakespeare NIAH conflates "did the model learn long-context
+retrieval" with "did the LSH bucket OOD tokens correctly", we built an
+MQAR task (`eval/assoc_recall.py`) where retrieval is the *only* training
+objective. Sequences look like:
+
+```
+k1 v1 k2 v2 ... kn vn  kq1 vq1 kq2 vq2 ...
+```
+
+Loss is taken at every query-key position. A model that doesn't form an
+induction head cannot solve this above chance.
+
+**Outcome: inconclusive.** Our dense baseline plateaus at ~30% accuracy
+on n_pairs=4 MQAR (chance among 4 in-context candidate values is 25%)
+across configs up to 2.68M params, 8000 steps, both MPS and CPU. The
+Mamba paper's published dense MQAR baseline reaches 100% on this task,
+so something in our setup (init, residual scaling, hparams, or a subtle
+bug) is preventing induction heads from forming. Until dense solves it,
+ARIA's number is uninformative.
+
+Real follow-up: replicate the published Mamba MQAR config verbatim
+to get a working dense baseline, *then* plug ARIA in.
+
 ## Roadmap
 
 - v0 (this): single-file PyTorch implementations, M3-trainable, basic evals.
+- **v0.1: get dense to 100% on MQAR** — this is the gating step for any
+  meaningful C3 claim.
 - v0.5: HNSW proximity graph, cross-layer index sharing, BPE, PG19.
 - v1: Triton/Metal kernel for the candidate-attend step, 100M params,
   a real long-context dataset, RULER + LongBench v2.
