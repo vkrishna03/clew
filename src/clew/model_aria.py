@@ -131,15 +131,15 @@ class AriaAttention(nn.Module):
         out = self.proj(out)
 
         # auxiliary router loss — encourages hash codes of q,k to match where dense
-        # attention would attend strongly. Computed on a fraction of forward passes.
+        # attention would attend strongly. Computed on every training forward pass.
         self.last_aux_loss = self._aux_loss(q, k) if self.training else None
         return out
 
     def _aux_loss(self, q, k):
         """Cheap teacher: dense-softmax top-1 key per query → align continuous hash codes.
 
-        Uses a single random batch item per head to keep cost subquadratic-ish for our
-        signaling purpose. Detached gradient through the choice of top-1.
+        Uses every batch item and head, so the no_grad score matrix is (B, H, T, T):
+        quadratic in T, training only. Detached gradient through the choice of top-1.
         """
         B, H, T, D = q.shape
         with torch.no_grad():

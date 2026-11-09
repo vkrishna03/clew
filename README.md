@@ -69,6 +69,14 @@ right; longer training would likely close it.
 The crossover lands between T=4096 and T=8192. At T=8192, ARIA is **3.8× faster
 and uses 4.4 GB less memory** than dense. This is the v0 demo.
 
+> **Caveat on these numbers.** `eval/memory_scan.py` measures a training step
+> (`model.train()`, forward and backward, one run per length). In training mode
+> ARIA also computes its router loss (`_aux_loss` in `model_aria.py`), which
+> builds a dense `(B, H, T, T)` score matrix under `no_grad`. So ARIA's figures
+> include a quadratic term, and the table does not show subquadratic memory
+> end to end. It shows that one training step at T=8192 was faster and smaller
+> for ARIA than for dense on this machine.
+
 ### Needle-in-haystack (hash-bucket retrieval @ k=64, 4 heads, in-distribution context)
 
 | T | what we measured | random-hash baseline | delta |
@@ -94,7 +102,9 @@ behavior at lengths the model never saw.
 
 What this means for the trifecta:
 
-- **C1 subquadratic:** ✅ memory crossover at T=8192 is real.
+- **C1 subquadratic:** ⚠️ partly. The attention path is subquadratic and the
+  T=8192 crossover was measured, but the training-time router loss is dense
+  T×T (see the caveat under the memory table).
 - **C2 content-aware:** ✅ by construction.
 - **C3 exact retrieval:** ❌ — the mechanism (gather → exact-attend over a
   candidate set) runs and gradients flow, but the learned function in this
@@ -153,10 +163,13 @@ It's algorithmically a learned-LSH variant of Reformer (Kitaev 2020) with
 multi-probe descent and a router-loss. The novel deltas are real but
 incremental.
 
-The v0 memory plot is accurate: ARIA's attention is genuinely subquadratic
-in T, and we measured the crossover. The throughput plot is also real,
-*but* depends on dense's MPS implementation choking on T² scratch at
-T=8192. That's the demo, not a kernel-vs-kernel claim.
+The v0 memory plot shows real measurements, with one caveat: ARIA's attention
+path is subquadratic in T, but the plot measures training steps, and
+training also runs the router loss's dense T×T score matrix. The crossover
+is real; a clean subquadratic curve would need that loss sampled or removed
+during measurement. The throughput plot is also real, *but* depends on
+dense's MPS implementation choking on T² scratch at T=8192. That's the demo,
+not a kernel-vs-kernel claim.
 
 The NIAH plot is the honest negative: the learned hash is **worse than a
 random hash at every length tested**, including the trained one (95% vs
@@ -259,7 +272,9 @@ matches nanoGPT (93% vs 96%) on the exact same task, so our
 is architectural, not implementation.
 
 What this changes for the trifecta:
-- **C1 subquadratic:** ✅ memory crossover at T=8192 is real.
+- **C1 subquadratic:** ⚠️ partly. The attention path is subquadratic and the
+  T=8192 crossover was measured, but the training-time router loss is dense
+  T×T (see the caveat under the memory table).
 - **C2 content-aware:** ✅ by construction.
 - **C3 exact retrieval:** ❌ **conclusive.** Naive learned-LSH attention
   does not learn retrieval on a task dense solves at 95%+. Confirmed both
