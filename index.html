@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clew — A thread through the labyrinth</title>
-<meta name="description" content="Clew: a from-scratch implementation of the ARIADNE attention architecture. Subquadratic, content-aware, exact-recall attention, trained on a laptop.">
+<meta name="description" content="Clew: a from-scratch test of ARIADNE, a learned-LSH sparse attention design, against a dense baseline on a laptop. v0 results, including a negative result on exact retrieval.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -188,8 +188,8 @@
   <svg class="thread" viewBox="0 0 720 36" aria-hidden="true">
     <path d="M0,18 C 90,4 180,32 270,18 S 450,4 540,18 S 690,32 720,18"/>
   </svg>
-  <p class="tagline">A thread through the labyrinth. Subquadratic attention with exact retrieval, on a laptop.</p>
-  <p class="lede">In Greek myth, Ariadne gave Theseus a clew — a ball of thread — so he could find his way out of the labyrinth. Modern attention has the opposite problem. Dense softmax remembers everything, exactly, but its cost grows with the square of the sequence. State-space models forget cheaply. Sliding windows forget locally. Hash-based schemes are content-aware but lossy. Clew is a small, faithful re-implementation of the <em>ARIADNE</em> architecture: a content-addressed lookup over a learned key store, with exact attention over the retrieved span. Subquadratic, content-aware, and exactly recallable — all three, on a single laptop, in roughly the shape of nanoGPT.</p>
+  <p class="tagline">A thread through the labyrinth. An attempt at subquadratic attention with exact retrieval, on a laptop.</p>
+  <p class="lede">In Greek myth, Ariadne gave Theseus a clew — a ball of thread — so he could find his way out of the labyrinth. Modern attention has the opposite problem. Dense softmax remembers everything, exactly, but its cost grows with the square of the sequence. State-space models forget cheaply. Sliding windows forget locally. Hash-based schemes are content-aware but lossy. Clew is a small from-scratch test of <em>ARIADNE</em>, an original design and in effect a learned-LSH variant of Reformer: hash each query into buckets, gather the keys in matching buckets, and run exact attention over that candidate set. The goal was all three properties below, on a single laptop, in roughly the shape of nanoGPT. The v0 results say how far it got: content-aware by construction, faster than dense at 8k context in one run, and a clear failure on exact retrieval.</p>
 </header>
 
 <svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
@@ -205,7 +205,7 @@
     <div class="constraint">
       <span class="tag">C1 · Subquadratic</span>
       <h3>Compute that does not blow up with sequence length.</h3>
-      <p>Cost grows like <code>O(n · k)</code> where <code>k ≪ n</code> is the retrieved span. A 32k-token forward pass costs roughly what a 4k dense pass costs, on the same hardware.</p>
+      <p>Cost grows like <code>O(n · k)</code> where <code>k ≪ n</code> is the retrieved span. The target: a 32k-token forward pass that costs roughly what a 4k dense pass costs, on the same hardware.</p>
     </div>
     <div class="constraint">
       <span class="tag">C2 · Content-aware</span>
@@ -228,7 +228,7 @@
 <section>
   <span class="kicker">§ 2 — Architecture Comparison</span>
   <h2>Where the existing approaches land.</h2>
-  <p>Each row is a family of long-context architectures. A check means the property is satisfied in the strict sense above; a dash means it is not, or only approximately. Clew is the only row with three checks.</p>
+  <p>Each row is a family of long-context architectures. A check means the property is satisfied in the strict sense above; a dash means it is not, or only approximately. Clew's row shows what v0 measured, not what it aimed for.</p>
   <div class="table-wrap">
     <table class="cmp" aria-label="Architecture comparison table">
       <thead>
@@ -271,15 +271,15 @@
           <td class="mark no" aria-label="probabilistic">—</td>
         </tr>
         <tr class="clew">
-          <th scope="row">Clew (ARIADNE)</th>
+          <th scope="row">Clew (ARIADNE) v0</th>
+          <td class="mark no" aria-label="approximate: attention path only, training loss is dense">~</td>
           <td class="mark yes" aria-label="yes">✓</td>
-          <td class="mark yes" aria-label="yes">✓</td>
-          <td class="mark yes" aria-label="yes">✓</td>
+          <td class="mark no" aria-label="no: failed needle and MQAR tests">—</td>
         </tr>
       </tbody>
     </table>
   </div>
-  <p class="table-note">A check means the property holds in the strict sense; a tilde means approximate; a dash means it fails. Local-only retrieval (sliding window) does not count as exact retrieval over the full context.</p>
+  <p class="table-note">A check means the property holds in the strict sense; a tilde means approximate; a dash means it fails. Local-only retrieval (sliding window) does not count as exact retrieval over the full context. Clew gets a tilde for subquadratic because its attention path is, but its training-time router loss still computes a dense <code>T × T</code> score matrix.</p>
 </section>
 
 <svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
@@ -290,7 +290,7 @@
 <section>
   <span class="kicker">§ 3 — How It Works</span>
   <h2>Hash, then look up, then attend.</h2>
-  <p>Every token writes a (key, value) pair into a learned content-addressable store. At query time we hash the query, retrieve the top-<code>k</code> matching keys, and run dense softmax attention over only those positions. The values are kept verbatim — there is no fixed-size hidden state to summarise them into.</p>
+  <p>Every key is hashed into a bucket. At query time we hash the query, gather up to <code>k</code> keys from its bucket and nearby buckets, and run dense softmax attention over only those positions. The values are kept verbatim — there is no fixed-size hidden state to summarise them into.</p>
   <div class="pipeline">
     <div class="stage">
       <span class="num">01 · Hash</span>
@@ -301,13 +301,13 @@
     <div class="stage">
       <span class="num">02 · Lookup</span>
       <h3>Retrieve top-<em>k</em>.</h3>
-      <p>HNSW-style index over the key store returns the <code>k</code> nearest neighbours. Cost is sublinear in <code>n</code>; the index is built and updated as the sequence grows.</p>
+      <p>A flat bucket table: probe the query's bucket and its one-bit-flip neighbours, and gather up to <code>k = 64</code> causal candidates. In v0 the table is built in a Python loop on the CPU; an HNSW-style index is future work.</p>
     </div>
     <div class="arrow" aria-hidden="true">→</div>
     <div class="stage">
       <span class="num">03 · Attend</span>
       <h3>Exact softmax on <em>k</em> tokens.</h3>
-      <p>Standard dense attention, but only over the retrieved span. Values are the originals — recall is bit-exact, not reconstructed.</p>
+      <p>Standard dense attention, but only over the gathered candidates. Values are the originals, so a token that is gathered is recalled exactly. The v0 problem is that the right token is often not gathered.</p>
     </div>
   </div>
 </section>
@@ -319,30 +319,36 @@
 
 <section>
   <span class="kicker">§ 4 — Results</span>
-  <h2>Three measurements, one laptop.</h2>
-  <p>All training runs are on a single MacBook with the model sized to fit in unified memory. The comparison is against a parameter-matched dense baseline (<code>clew-dense</code>) trained on the same tokens for the same wall-clock budget.</p>
+  <h2>Four measurements, one laptop.</h2>
+  <p>Both models are about 0.85M parameters, trained on tinyshakespeare at <code>T = 256</code> for 1,000 steps each, one seed. <code>clew-dense</code> is a nanoGPT-style baseline. It trained on the M3 GPU in 48 s; <code>clew-aria</code> trained on the CPU in 598 s, because its v0 bucket index is built in a Python loop.</p>
+  <ul>
+    <li><strong>Loss:</strong> validation loss 2.32 for dense, 2.43 for ARIA, a gap of 0.11 nats.</li>
+    <li><strong>Memory and speed:</strong> at <code>T = 8192</code> (one training step, batch 2) ARIA took 3.07 s and 10.9 GB against dense's 11.6 s and 15.2 GB. Below that length dense used less memory. ARIA's figures include its router loss, which builds a dense <code>T × T</code> score matrix, so this is not a clean subquadratic memory curve.</li>
+    <li><strong>Needle retrieval:</strong> the learned hash put the needle in the candidate set 95% of the time at <code>T = 256</code>, falling to 5% at 4,096. A random hash does better at every length.</li>
+    <li><strong>Zoology MQAR:</strong> dense reached 93% accuracy, ARIA about 11%. A clear negative for exact retrieval at this scale.</li>
+  </ul>
   <div class="charts">
     <figure class="chart">
-      <img src="plots/loss.png" alt="Training loss curves: clew-dense versus clew-aria over training steps. Both curves descend; aria tracks dense within noise.">
+      <img src="plots/loss.png" alt="Training loss curves for clew-dense and clew-aria. ARIA ends 0.11 nats higher in validation loss (2.43 against 2.32).">
       <figcaption class="cap">Loss · dense vs aria</figcaption>
     </figure>
     <figure class="chart">
-      <img src="plots/memory.png" alt="Memory scan: peak GPU memory as a function of context length. Dense scales quadratically; aria scales near-linearly.">
+      <img src="plots/memory.png" alt="Allocated memory against sequence length on a log scale. Dense uses less memory up to T=1024, the two track each other up to T=4096, and ARIA uses less at T=8192.">
       <figcaption class="cap">Memory · context scan</figcaption>
     </figure>
     <figure class="chart">
-      <img src="plots/niah.png" alt="Needle-in-a-haystack accuracy as a function of haystack length. Aria stays near 100 percent where dense runs out of memory.">
-      <figcaption class="cap">NIAH · recall vs length</figcaption>
+      <img src="plots/niah.png" alt="ARIA needle retrieval hit rate by sequence length: about 95 percent at T=256, 60 percent at 512, 35 percent at 1024, 10 percent at 2048 and 5 percent at 4096.">
+      <figcaption class="cap">NIAH · hit rate vs length</figcaption>
     </figure>
   </div>
   <div class="samples">
     <div class="sample">
-      <span class="label">clew-dense · 124M · 4k ctx</span>
-      <p>"The labyrinth was not a maze of walls but of choices, and the thread he held was thinner than memory. Each step recalled the last, exactly, and the next was already pulled from the dark."</p>
+      <span class="label">clew-dense · ~0.85M · T=256 · val 2.32</span>
+      <p>Glind wakst, harve lomanger ame. Her<br>STIOLOME:<br>Thiner: O hond! t digorar theam, iite ghit.</p>
     </div>
     <div class="sample">
-      <span class="label">clew-aria · 124M · 32k ctx</span>
-      <p>"The labyrinth had no walls he could touch, only turnings he had taken before. The thread did not remember the path; it <em>was</em> the path, and reading it backward was the same as walking it forward."</p>
+      <span class="label">clew-aria · ~0.85M · T=256 · val 2.43</span>
+      <p>MININIAN:<br>Whad, Ekis, an the fivo wit.<br>And ss morer ghyoly fy his te ndeporord Cowioll hachent ang wast ous,</p>
     </div>
   </div>
 </section>
@@ -367,14 +373,14 @@ uv run python data/prepare.py
 <span class="c"># 3. train the dense baseline</span>
 uv run clew train <span class="p">--model</span> dense
 
-<span class="c"># 4. train the ARIADNE model</span>
-uv run clew train <span class="p">--model</span> aria
+<span class="c"># 4. train the ARIADNE model (CPU is faster for v0)</span>
+uv run clew train <span class="p">--model</span> aria <span class="p">--batch-size</span> 8 <span class="p">--device</span> cpu
 
 <span class="c"># 5. evaluate long-context recall</span>
 uv run clew eval needle
 uv run clew eval memory</pre>
   </div>
-  <p class="small muted" style="margin-top:14px">Source: <a href="https://github.com/clew-research/clew">github.com/clew-research/clew</a> · MIT licensed · single-file model definitions in the spirit of nanoGPT.</p>
+  <p class="small muted" style="margin-top:14px">Source: <a href="https://github.com/vkrishna03/clew">github.com/vkrishna03/clew</a> · single-file model definitions in the spirit of nanoGPT.</p>
 </section>
 
 <svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
@@ -383,16 +389,9 @@ uv run clew eval memory</pre>
 </svg>
 
 <section>
-  <span class="kicker">§ 6 — The Paper</span>
-  <h2>ARIADNE — content-addressed attention with exact recall.</h2>
-  <p>The architecture is described in a short technical report. Draft is in preparation; a preprint will be linked here on submission. <a href="#" aria-label="Paper draft, link forthcoming">Read the draft (forthcoming)</a>.</p>
-<pre class="bib">@techreport{clew2026ariadne,
-  title  = {ARIADNE: Content-Addressed Attention with Exact Recall},
-  author = {Clew Research},
-  year   = {2026},
-  month  = {May},
-  note   = {v0.1, draft. https://clew.dev}
-}</pre>
+  <span class="kicker">§ 6 — Write-up</span>
+  <h2>No paper. The README is the write-up.</h2>
+  <p>There is no paper or preprint. The <a href="https://github.com/vkrishna03/clew#readme">README</a> has the full v0 results, the negative ones included, and what a v1 would need to change: training at long context, a length-invariant position scheme, more parameters, and a training signal that rewards retrieval.</p>
 </section>
 
 <svg class="rule" viewBox="0 0 720 14" aria-hidden="true">
@@ -410,14 +409,14 @@ uv run clew eval memory</pre>
     <li><span class="n">NSA</span> <span class="d">— natively sparse attention; learned routing over compressed blocks. <a href="https://arxiv.org/abs/2502.11089">arXiv:2502.11089</a></span></li>
     <li><span class="n">MoBA</span> <span class="d">— mixture-of-block-attention; gated routing across coarse spans. <a href="https://arxiv.org/abs/2502.13189">arXiv:2502.13189</a></span></li>
     <li><span class="n">DeepSeek V3.2</span> <span class="d">— DSA, a production-scale sparse attention variant. <a href="https://arxiv.org/abs/2512.02556">arXiv:2512.02556</a></span></li>
-    <li><span class="n">HNSW</span> <span class="d">— hierarchical navigable small worlds; the index that makes the lookup stage cheap. <a href="https://arxiv.org/abs/1603.09320">arXiv:1603.09320</a></span></li>
+    <li><span class="n">HNSW</span> <span class="d">— hierarchical navigable small worlds; a candidate index for the lookup stage. v0 uses a flat bucket table instead. <a href="https://arxiv.org/abs/1603.09320">arXiv:1603.09320</a></span></li>
     <li><span class="n">Modern Hopfield Networks</span> <span class="d">— exact-recall associative memory, equivalent to softmax attention in the limit. <a href="https://arxiv.org/abs/2008.02217">arXiv:2008.02217</a></span></li>
   </ul>
 </section>
 
 <footer>
-  <p>Clew is released under the MIT License. Built on a MacBook. Inspired by Karpathy's nanoGPT and the Subquadratic Inc. SubQ launch (May 2026).</p>
-  <p class="small">© 2026 Clew Research · <a href="https://github.com/clew-research/clew">source</a> · <a href="mailto:hello@clew.dev">hello@clew.dev</a></p>
+  <p>Built on a MacBook. Inspired by Karpathy's nanoGPT and the Subquadratic Inc. SubQ launch (May 2026).</p>
+  <p class="small">© 2026 Vamshi Krishna Kodimala · <a href="https://github.com/vkrishna03/clew">source</a></p>
 </footer>
 
 </main>
